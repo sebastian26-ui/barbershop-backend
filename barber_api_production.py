@@ -30,8 +30,15 @@ else:
 app = Flask(__name__)
 
 # CORS Configuration
-CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:5500').split(',')
-CORS(app, resources={r"/api/*": {"origins": CORS_ORIGINS}})
+# Allow GitHub Pages, Netlify, and local development
+CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
+CORS(app, resources={
+    r"/api/*": {
+        "origins": CORS_ORIGINS if CORS_ORIGINS[0] != '*' else '*',
+        "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # Test mode (allow any email to login)
 TEST_MODE = os.environ.get('TEST_MODE', 'true').lower() == 'true'
