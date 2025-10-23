@@ -29,16 +29,14 @@ else:
 
 app = Flask(__name__)
 
-# CORS Configuration
-# Allow GitHub Pages, Netlify, and local development
-CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
-CORS(app, resources={
-    r"/api/*": {
-        "origins": CORS_ORIGINS if CORS_ORIGINS[0] != '*' else '*',
-        "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
+# CORS Configuration - Allow all origins for deployment
+# This allows GitHub Pages, Netlify, and any other frontend
+CORS(app, 
+     resources={r"/api/*": {"origins": "*"}},
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+     expose_headers=["Content-Type"],
+     supports_credentials=False)
 
 # Test mode (allow any email to login)
 TEST_MODE = os.environ.get('TEST_MODE', 'true').lower() == 'true'
