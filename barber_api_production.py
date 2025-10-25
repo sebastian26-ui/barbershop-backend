@@ -497,45 +497,84 @@ def barber_reservations(barber_id):
 @app.route('/api/reservations', methods=['POST'])
 def create_reservation():
     """Create a new reservation"""
-    data = request.json
-    reservation_id = str(uuid.uuid4())
-    
-    customer_name = data.get('customerName')
-    service_id = data.get('serviceId')
-    barber_id = data.get('barberId')
-    start_time = data.get('startTime')
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Get service duration
-    if IS_PRODUCTION:
-        cursor.execute('SELECT duration_minutes FROM services WHERE id = %s', (service_id,))
-    else:
-        cursor.execute('SELECT duration_minutes FROM services WHERE id = ?', (service_id,))
-    
-    service = cursor.fetchone()
-    duration = service['duration_minutes']
-    
-    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-    end_dt = start_dt + timedelta(minutes=duration)
-    
-    if IS_PRODUCTION:
-        cursor.execute('''
-            INSERT INTO reservations 
-            (id, customer_name, service_id, barber_id, start_time, end_time, status)
-            VALUES (%s, %s, %s, %s, %s, %s, 'PENDING')
-        ''', (reservation_id, customer_name, service_id, barber_id, start_dt, end_dt))
-    else:
-        cursor.execute('''
-            INSERT INTO reservations 
-            (id, customer_name, service_id, barber_id, start_time, end_time, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
-        ''', (reservation_id, customer_name, service_id, barber_id, start_dt.isoformat(), end_dt.isoformat()))
-    
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True, 'id': reservation_id}), 201
+    try:
+        data = request.json
+        reservation_id = str(uuid.uuid4())
+        
+        customer_name = data.get('customerName')
+        service_id = data.get('serviceId')
+        barber_id = data.get('barberId')
+        start_time = data.get('startTime')
+        
+        if not all([customer_name, service_id, barber_id, start_time]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get service details
+        if IS_PRODUCTION:
+            cursor.execute('SELECT name, duration_minutes FROM services WHERE id = %s', (service_id,))
+        else:
+            cursor.execute('SELECT name, duration_minutes FROM services WHERE id = ?', (service_id,))
+        
+        service = cursor.fetchone()
+        if not service:
+            conn.close()
+            return jsonify({'error': 'Service not found'}), 404
+            
+        service_name = service['name']
+        duration = service['duration_minutes']
+        
+        # Get barber name
+        if IS_PRODUCTION:
+            cursor.execute('SELECT name FROM barbers WHERE id = %s', (barber_id,))
+        else:
+            cursor.execute('SELECT name FROM barbers WHERE id = ?', (barber_id,))
+        
+        barber = cursor.fetchone()
+        if not barber:
+            conn.close()
+            return jsonify({'error': 'Barber not found'}), 404
+            
+        barber_name = barber['name']
+        
+        # Parse datetime (treat as local time, not UTC)
+        start_dt = datetime.fromisoformat(start_time.replace('Z', ''))
+        end_dt = start_dt + timedelta(minutes=duration)
+        
+        if IS_PRODUCTION:
+            cursor.execute('''
+                INSERT INTO reservations 
+                (id, customer_name, service_id, barber_id, start_time, end_time, status)
+                VALUES (%s, %s, %s, %s, %s, %s, 'PENDING')
+            ''', (reservation_id, customer_name, service_id, barber_id, start_dt, end_dt))
+        else:
+            cursor.execute('''
+                INSERT INTO reservations 
+                (id, customer_name, service_id, barber_id, start_time, end_time, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
+            ''', (reservation_id, customer_name, service_id, barber_id, start_dt.isoformat(), end_dt.isoformat()))
+        
+        conn.commit()
+        conn.close()
+        
+        # Return reservation object expected by frontend
+        return jsonify({
+            'success': True,
+            'reservation': {
+                'id': reservation_id,
+                'customer_name': customer_name,
+                'service_name': service_name,
+                'barber_name': barber_name,
+                'start_time': start_dt.isoformat(),
+                'end_time': end_dt.isoformat(),
+                'status': 'PENDING'
+            }
+        }), 201
+    except Exception as e:
+        print(f"Error creating reservation: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/reservations/<reservation_id>/status', methods=['PATCH'])
 def update_reservation_status(reservation_id):
