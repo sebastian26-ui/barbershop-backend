@@ -646,7 +646,7 @@ def get_available_barbers():
     requested_end_time = end_datetime.strftime('%H:%M')
     requested_date = requested_datetime.strftime('%Y-%m-%d')
     
-    # Find available barbers
+    # Find available barbers (excluding those with existing reservations at this time)
     if IS_PRODUCTION:
         cursor.execute('''
             SELECT DISTINCT b.id, b.name, b.bio
@@ -661,9 +661,21 @@ def get_available_barbers():
                 (ba.specific_date = %s AND ba.start_time <= %s AND ba.end_time >= %s)
                 OR (ba.specific_date IS NULL AND ba.day_of_week = %s AND ba.start_time <= %s AND ba.end_time >= %s)
             )
+            AND NOT EXISTS (
+                SELECT 1 FROM reservations r
+                WHERE r.barber_id = b.id
+                AND r.status IN ('PENDING', 'CONFIRMED')
+                AND (
+                    (r.start_time <= %s AND r.end_time > %s)
+                    OR (r.start_time < %s AND r.end_time >= %s)
+                    OR (r.start_time >= %s AND r.end_time <= %s)
+                )
+            )
             ORDER BY b.name
         ''', (service_id, requested_date, requested_start_time, requested_end_time,
-              day_of_week, requested_start_time, requested_end_time))
+              day_of_week, requested_start_time, requested_end_time,
+              requested_datetime, requested_datetime, end_datetime, end_datetime,
+              requested_datetime, end_datetime))
     else:
         cursor.execute('''
             SELECT DISTINCT b.id, b.name, b.bio
@@ -678,9 +690,22 @@ def get_available_barbers():
                 (ba.specific_date = ? AND ba.start_time <= ? AND ba.end_time >= ?)
                 OR (ba.specific_date IS NULL AND ba.day_of_week = ? AND ba.start_time <= ? AND ba.end_time >= ?)
             )
+            AND NOT EXISTS (
+                SELECT 1 FROM reservations r
+                WHERE r.barber_id = b.id
+                AND r.status IN ('PENDING', 'CONFIRMED')
+                AND (
+                    (r.start_time <= ? AND r.end_time > ?)
+                    OR (r.start_time < ? AND r.end_time >= ?)
+                    OR (r.start_time >= ? AND r.end_time <= ?)
+                )
+            )
             ORDER BY b.name
         ''', (service_id, requested_date, requested_start_time, requested_end_time,
-              day_of_week, requested_start_time, requested_end_time))
+              day_of_week, requested_start_time, requested_end_time,
+              requested_datetime.isoformat(), requested_datetime.isoformat(),
+              end_datetime.isoformat(), end_datetime.isoformat(),
+              requested_datetime.isoformat(), end_datetime.isoformat()))
     
     barbers = [dict(row) for row in cursor.fetchall()]
     conn.close()
