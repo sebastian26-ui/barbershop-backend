@@ -490,7 +490,26 @@ def barber_reservations(barber_id):
             ORDER BY r.start_time DESC
         ''', (barber_id,))
     
-    reservations = [dict(row) for row in cursor.fetchall()]
+    reservations = []
+    for row in cursor.fetchall():
+        reservation = dict(row)
+        # Format datetime fields to remove timezone info
+        if 'start_time' in reservation and reservation['start_time']:
+            if isinstance(reservation['start_time'], str):
+                # Already a string, remove timezone
+                reservation['start_time'] = reservation['start_time'].replace('+00:00', '').replace('Z', '')
+            else:
+                # It's a datetime object, format without timezone
+                reservation['start_time'] = reservation['start_time'].strftime('%Y-%m-%dT%H:%M:%S')
+        
+        if 'end_time' in reservation and reservation['end_time']:
+            if isinstance(reservation['end_time'], str):
+                reservation['end_time'] = reservation['end_time'].replace('+00:00', '').replace('Z', '')
+            else:
+                reservation['end_time'] = reservation['end_time'].strftime('%Y-%m-%dT%H:%M:%S')
+        
+        reservations.append(reservation)
+    
     conn.close()
     return jsonify({'reservations': reservations})
 
